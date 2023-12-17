@@ -47,6 +47,11 @@ const gameSchema = new mongoose.Schema({
     },
   ],
 
+  currentPlayerIndex: {
+    type: Number,
+    default: 0,
+  },
+
   createdAt: {
     type: Date,
     default: Date.now,
