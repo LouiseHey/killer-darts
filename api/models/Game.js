@@ -49,7 +49,14 @@ const gameSchema = new mongoose.Schema({
 
   currentPlayerIndex: {
     type: Number,
+    required: true,
     default: 0,
+  },
+
+  inProgress: {
+    type: Boolean,
+    required: true,
+    default: true,
   },
 
   createdAt: {

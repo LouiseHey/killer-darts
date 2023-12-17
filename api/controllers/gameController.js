@@ -53,11 +53,15 @@ const makeMove = async (req, res) => {
     const game = await Game.findOne({ gameId });
     const currentPlayer = game.players[game.currentPlayerIndex]
 
-    if (currentPlayer.currentPoints === game.killerPoints) {
+    if (currentPlayer.isEliminated) {
+      if (hitNumber === 25 || hitNumber === 50) {
+        await updatePlayerPoints(game.gameId, player.playerId, 0, false);
+      }
+    } else if (currentPlayer.currentPoints === game.killerPoints) {
       game.players.forEach(async player => {
         if (player.targetNumber === hitNumber) {
           const updatedPoints = player.currentPoints - timesHit;
-          await updatePlayerPoints(game.gameId, player.playerId, updatedPoints);
+          await updatePlayerPoints(game.gameId, player.playerId, updatedPoints, false);
         }
       });
     } else if (currentPlayer.targetNumber === hitNumber) {
@@ -67,9 +71,9 @@ const makeMove = async (req, res) => {
         const pointsOver = summedPoints - game.killerPoints;
         const updatedPoints = game.killerPoints - pointsOver;
 
-        await updatePlayerPoints(game.gameId, currentPlayer.playerId, updatedPoints);
+        await updatePlayerPoints(game.gameId, currentPlayer.playerId, updatedPoints, false);
       } else {
-        await updatePlayerPoints(game.gameId, currentPlayer.playerId, summedPoints);
+        await updatePlayerPoints(game.gameId, currentPlayer.playerId, summedPoints, false);
       }
     }
 
@@ -84,12 +88,46 @@ const makeMove = async (req, res) => {
   }
 };
 
-const updatePlayerPoints = async (gameId, playerId, newPoints) => {
+const endTurn = async (req, res) => {
+  try {
+    const { gameId } = req.params;
 
-  console.log(gameId, playerId, newPoints)
+    const game = await Game.findOne({ gameId });
+    const currentPlayer = game.players[game.currentPlayerIndex];
+
+    const activePlayers = game.players.filter(player => !player.isEliminated);
+
+    let nextPlayerIndex = (game.currentPlayerIndex + 1) % game.players.length;
+
+    if (!game.canRevivePlayers) {
+      while (game.players[nextPlayerIndex].isEliminated) {
+        nextPlayerIndex = (nextPlayerIndex + 1) % game.players.length;
+      }
+    }
+
+    await endPlayerTurn(game.gameId, currentPlayer.playerId, activePlayers.length > 1, currentPlayer.currentPoints < 0, nextPlayerIndex);
+    await game.save();
+
+    const updatedGame = await Game.findOne({ gameId });
+
+    res.status(200).json({ message: 'Turn ended', gameState: updatedGame });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+};
+
+const updatePlayerPoints = async (gameId, playerId, newPoints, isEliminated) => {
   await Game.updateOne(
     { gameId, 'players.playerId': playerId },
-    { $set: { 'players.$.currentPoints': newPoints } }
+    { $set: { 'players.$.currentPoints': newPoints, 'players.$.isEliminated': isEliminated } }
+  );
+};
+
+const endPlayerTurn = async (gameId, playerId, inProgress, isEliminated, currentPlayerIndex) => {
+  await Game.updateOne(
+    { gameId, 'players.playerId': playerId },
+    { $set: { 'players.$.isEliminated': isEliminated, 'currentPlayerIndex': currentPlayerIndex, 'inProgress': inProgress } }
   );
 };
 
@@ -97,4 +135,5 @@ module.exports = {
   startNewGame,
   getGameById,
   makeMove,
+  endTurn,
 };
